@@ -1,14 +1,15 @@
-# D:\SEM8\BigData\assi\LyricSense\app.py
 import os
 import sys
 import logging
 from flask import Flask, render_template, request, jsonify
 from pyspark.sql import SparkSession
 from pyspark.ml import PipelineModel
+from pyspark.sql.functions import col, udf
+from pyspark.sql.types import ArrayType, DoubleType
 
 # Fix Spark Python worker path
-os.environ["PYSPARK_PYTHON"] = r"C:\Python310\python.exe"
-os.environ["PYSPARK_DRIVER_PYTHON"] = r"C:\Python310\python.exe"
+os.environ["PYSPARK_PYTHON"] = r"C:\\Python310\\python.exe"
+os.environ["PYSPARK_DRIVER_PYTHON"] = r"C:\\Python310\\python.exe"
 
 # Set environment variables (make sure winutils.exe is in C:\Hadoop\bin)
 os.environ["JAVA_HOME"] = "C:\\Program Files\\Eclipse Adoptium\\jdk-11.0.27.6-hotspot"
@@ -19,19 +20,18 @@ os.environ["PATH"] = f"C:\\Hadoop\\bin;{os.environ['PATH']}"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Create Spark session (disable native IO to prevent winutils errors)
+# Create Spark session
 try:
     spark = SparkSession.builder \
-    .appName("LyricGenrePredictor") \
-    .master("local[*]") \
-    .config("spark.hadoop.io.native.lib.available", "false") \
-    .config("spark.hadoop.fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem") \
-    .config("spark.hadoop.fs.file.impl.disable.cache", "true") \
-    .config("spark.sql.warehouse.dir", "file:///D:/SEM8/BigData/assi/LyricSense/spark-warehouse") \
-    .getOrCreate()
+        .appName("LyricGenrePredictor") \
+        .master("local[*]") \
+        .config("spark.hadoop.io.native.lib.available", "false") \
+        .config("spark.hadoop.fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem") \
+        .config("spark.hadoop.fs.file.impl.disable.cache", "true") \
+        .config("spark.sql.warehouse.dir", "file:///D:/SEM8/BigData/assi/LyricSense/spark-warehouse") \
+        .getOrCreate()
     logger.info("Spark session created.")
     print("Spark version:", spark.version)
-
 except Exception as e:
     logger.error(f"Spark session failed: {str(e)}")
     sys.exit(1)
@@ -58,6 +58,9 @@ except Exception as e:
     logger.error(f"Genre mapping load failed: {str(e)}")
     sys.exit(1)
 
+# Create a UDF to convert probability vector to an array
+vector_to_array = udf(lambda v: v.toArray().tolist(), ArrayType(DoubleType()))
+
 # Flask App
 app = Flask(__name__)
 
@@ -74,17 +77,27 @@ def predict():
         if not lyrics:
             return jsonify({"error": "No lyrics provided"}), 400
 
-        # Create a single-row Spark DataFrame
+        # Create a DataFrame with the lyrics
         df = spark.createDataFrame([(lyrics,)], ["lyrics"])
-
-        # Predict
+        
+        # Get predictions
         prediction_df = model.transform(df)
-        predicted_index = int(prediction_df.collect()[0]['prediction'])
+        
+        # Add a column with probability array
+        prediction_df = prediction_df.withColumn("prob_array", vector_to_array(col("probability")))
+        
+        # Collect results
+        row = prediction_df.select("prediction", "prob_array").collect()[0]
+        
+        # Get predicted genre
+        predicted_index = int(row["prediction"])
         predicted_genre = genre_index_to_label.get(predicted_index, "Unknown")
-
-        # Optionally: simulate uniform probability (or skip if your model doesn't output probability)
-        probs = {genre: 1.0 if genre == predicted_genre else 0.0 for genre in genre_index_to_label.values()}
-
+        
+        # Create probabilities dictionary
+        probability_array = row["prob_array"]
+        probs = {genre_index_to_label[i]: round(float(prob), 4) for i, prob in enumerate(probability_array)}
+        
+        # Return the results
         return jsonify({
             "predicted_genre": predicted_genre,
             "probabilities": probs
