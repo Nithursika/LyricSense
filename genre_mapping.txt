@@ -1,7 +1,8 @@
 pop,0
 country,1
 blues,2
-jazz,3
-reggae,4
-rock,5
+rock,3
+jazz,4
+reggae,5
 hip hop,6
+Classical,7

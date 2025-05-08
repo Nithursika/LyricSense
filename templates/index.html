@@ -1,3 +1,4 @@
+<!-- D:\SEM8\BigData\assi\LyricSense\templates\index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -63,18 +64,13 @@
       max-width: 600px;
     }
 
-    .results {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin-top: 30px;
-    }
-
     .prob-table {
       margin-top: 20px;
       border-collapse: collapse;
       width: 80%;
       max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
     }
 
     .prob-table th, .prob-table td {
@@ -85,19 +81,6 @@
 
     .prob-table th {
       background-color: #f2f2f2;
-    }
-
-    .visualization-toggle {
-      margin: 20px 0;
-    }
-
-    .visualization-toggle button {
-      margin: 0 10px;
-      background-color: #7f8c8d;
-    }
-
-    .visualization-toggle button.active {
-      background-color: #8e44ad;
     }
 
     footer {
@@ -114,29 +97,22 @@
   <textarea id="lyrics" rows="10" placeholder="Paste lyrics here..."></textarea><br>
   <button onclick="predictGenre()">Classify</button>
 
-  <div class="results" id="results" style="display: none;">
-    <h3 id="predicted-genre"></h3>
-    
-    <div class="visualization-toggle">
-      <button onclick="changeVisualization('pie')" class="active" id="pieBtn">Pie Chart</button>
-      <button onclick="changeVisualization('bar')" id="barBtn">Bar Chart</button>
-    </div>
-    
-    <div class="chart-container">
-      <canvas id="genreChart"></canvas>
-    </div>
-    
-    <h4>Probability Breakdown</h4>
-    <table class="prob-table" id="probTable">
-      <thead>
-        <tr>
-          <th>Genre</th>
-          <th>Probability</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+  <h3 id="predicted-genre"></h3>
+
+  <div class="chart-container">
+    <canvas id="genreChart"></canvas>
   </div>
+
+  <h4>Probability Breakdown</h4>
+  <table class="prob-table" id="probTable">
+    <thead>
+      <tr>
+        <th>Genre</th>
+        <th>Probability</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
   <footer>
     &copy; 2025 LyricSense Project — Built with Flask & Chart.js
@@ -144,8 +120,6 @@
 
   <script>
     let chartInstance = null;
-    let currentChartType = 'pie';
-    let chartData = null;
 
     function predictGenre() {
       const lyrics = document.getElementById("lyrics").value;
@@ -168,20 +142,9 @@
           return;
         }
 
-        // Store chart data
-        chartData = data;
-        
-        // Show results section
-        document.getElementById("results").style.display = "flex";
-
-        // Show predicted genre
         document.getElementById("predicted-genre").innerText = "Predicted Genre: " + data.predicted_genre;
-
-        // Update the probability table
         updateProbabilityTable(data.probabilities);
-
-        // Render the chart
-        renderChart(currentChartType);
+        renderBarChart(data.probabilities);
       })
       .catch(err => {
         alert("Error: " + err);
@@ -191,116 +154,49 @@
     function updateProbabilityTable(probabilities) {
       const tableBody = document.querySelector("#probTable tbody");
       tableBody.innerHTML = "";
-      
-      // Sort genres by probability (descending)
-      const sortedGenres = Object.entries(probabilities)
-        .sort((a, b) => b[1] - a[1]);
-      
+
+      const sortedGenres = Object.entries(probabilities).sort((a, b) => b[1] - a[1]);
+
       sortedGenres.forEach(([genre, prob]) => {
         const row = document.createElement("tr");
-        
-        const genreCell = document.createElement("td");
-        genreCell.textContent = genre;
-        
-        const probCell = document.createElement("td");
-        probCell.textContent = (prob * 100).toFixed(2) + "%";
-        
-        row.appendChild(genreCell);
-        row.appendChild(probCell);
+        row.innerHTML = `<td>${genre}</td><td>${(prob * 100).toFixed(2)}%</td>`;
         tableBody.appendChild(row);
       });
     }
 
-    function changeVisualization(type) {
-      if (type === currentChartType) return;
-      
-      // Update buttons
-      document.getElementById("pieBtn").classList.toggle("active");
-      document.getElementById("barBtn").classList.toggle("active");
-      
-      currentChartType = type;
-      if (chartData) {
-        renderChart(type);
-      }
-    }
-
-    function renderChart(type) {
-      const labels = Object.keys(chartData.probabilities);
-      const values = Object.values(chartData.probabilities);
-      
-      // Generate colors
-      const colors = [
-        "#36A2EB", "#FF6384", "#FFCE56", "#8E44AD", 
-        "#2ECC71", "#E67E22", "#1ABC9C", "#3498DB",
-        "#9B59B6", "#F1C40F", "#E74C3C", "#16A085"
-      ];
-
+    function renderBarChart(probabilities) {
+      const labels = Object.keys(probabilities);
+      const values = Object.values(probabilities);
       const ctx = document.getElementById("genreChart").getContext("2d");
+
       if (chartInstance) chartInstance.destroy();
 
-      const chartOptions = {
-        responsive: true,
-        plugins: {
-          legend: {
-            display: type === 'pie'
-          },
-          tooltip: {
-            callbacks: {
-              label: function(context) {
-                const label = context.label || '';
-                const value = context.raw;
-                return label + ': ' + (value * 100).toFixed(2) + '%';
+      chartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: labels,
+          datasets: [{
+            label: "Genre Probability",
+            data: values,
+            backgroundColor: [
+              "#36A2EB", "#FF6384", "#FFCE56", "#8E44AD",
+              "#2ECC71", "#E67E22", "#1ABC9C", "#3498DB"
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 1,
+              ticks: {
+                callback: value => `${(value * 100).toFixed(0)}%`
               }
             }
           }
         }
-      };
-
-      if (type === 'bar') {
-        // Sort data for bar chart
-        const combined = labels.map((label, i) => ({ label, value: values[i] }));
-        combined.sort((a, b) => b.value - a.value);
-        
-        chartInstance = new Chart(ctx, {
-          type: "bar",
-          data: {
-            labels: combined.map(item => item.label),
-            datasets: [{
-              label: "Genre Probability",
-              data: combined.map(item => item.value),
-              backgroundColor: colors.slice(0, combined.length),
-              borderWidth: 1
-            }]
-          },
-          options: {
-            ...chartOptions,
-            scales: {
-              y: {
-                beginAtZero: true,
-                max: 1,
-                ticks: {
-                  callback: function(value) {
-                    return (value * 100) + '%';
-                  }
-                }
-              }
-            }
-          }
-        });
-      } else {
-        chartInstance = new Chart(ctx, {
-          type: "pie",
-          data: {
-            labels: labels,
-            datasets: [{
-              label: "Genre Probability",
-              data: values,
-              backgroundColor: colors.slice(0, labels.length)
-            }]
-          },
-          options: chartOptions
-        });
-      }
+      });
     }
   </script>
 </body>

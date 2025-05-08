@@ -1,6 +1,8 @@
+# D:\SEM8\BigData\assi\LyricSense\app.py
 import os
 import sys
 import logging
+import numpy as np
 from flask import Flask, render_template, request, jsonify
 from pyspark.sql import SparkSession
 from pyspark.ml import PipelineModel
@@ -95,17 +97,42 @@ def predict():
         
         # Create probabilities dictionary
         probability_array = row["prob_array"]
-        probs = {genre_index_to_label[i]: round(float(prob), 4) for i, prob in enumerate(probability_array)}
+        
+        # Check if we have extreme probabilities (all 0s or all 1s)
+        max_prob = max(probability_array)
+        
+        # If the model is super confident (100% on one class), apply softening
+        if max_prob > 0.95:
+            logger.info("Applying probability softening to avoid 100% predictions")
+            # Use softmax to spread the probabilities a bit
+            softened_probs = softmax(probability_array)
+            probs = {genre_index_to_label[i]: round(float(prob), 4) for i, prob in enumerate(softened_probs)}
+        else:
+            probs = {genre_index_to_label[i]: round(float(prob), 4) for i, prob in enumerate(probability_array)}
         
         # Return the results
         return jsonify({
             "predicted_genre": predicted_genre,
             "probabilities": probs
         })
-
+    
     except Exception as e:
         logger.error(f"Prediction error: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+def softmax(x):
+    """Apply softmax function to get smoother probability distribution"""
+    # Temp parameter controls the "softness" - higher = more confident
+    temp = 1.5
+    
+    # Apply temperature scaling
+    x_scaled = np.array(x) / temp
+    
+    # Subtract max for numerical stability before applying exp
+    e_x = np.exp(x_scaled - np.max(x_scaled))
+    
+    # Return softmax values
+    return e_x / e_x.sum()
 
 if __name__ == "__main__":
     app.run(debug=True)
