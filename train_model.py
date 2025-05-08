@@ -1,44 +1,44 @@
+# //D:\SEM8\BigData\assi\LyricSense\train_model.py
 import os
 import sys
 import shutil
 import logging
+
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from pyspark.ml import Pipeline
-from pyspark.ml.feature import (
-    Tokenizer, StopWordsRemover, CountVectorizer, IDF, StringIndexer,HashingTF
-)
+from pyspark.ml.feature import Tokenizer, StopWordsRemover, CountVectorizer, IDF, StringIndexer
 from pyspark.ml.classification import NaiveBayes
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator
-from pyspark.ml.classification import LogisticRegression
 
-# --- Environment Setup for Windows & Spark ---
+# Setup environment variables for Java & Hadoop
 os.environ["JAVA_HOME"] = "C:\\Program Files\\Eclipse Adoptium\\jdk-11.0.27.6-hotspot"
 os.environ["HADOOP_HOME"] = "C:\\Hadoop"
 os.environ["PATH"] = "C:\\Windows\\System32;C:\\Hadoop\\bin;" + os.environ["PATH"]
-os.environ["HADOOP_OPTS"] = "-Djava.library.path="  # Disable native IO to prevent access0 error
 
-# --- Logging Configuration ---
+# Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# --- Spark Session Initialization ---
+# Initialize Spark session
 try:
     spark = SparkSession.builder \
         .appName("MusicGenreClassification") \
-        .config("spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version", "2") \
+        .config("spark.hadoop.fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem") \
+        .config("spark.sql.warehouse.dir", "file:///D:/SEM8/BigData/assi/LyricSense/spark-warehouse") \
+        .config("spark.hadoop.io.native.lib.available", "false") \
         .getOrCreate()
     logger.info("Spark session created successfully")
 except Exception as e:
     logger.error(f"Failed to create Spark session: {str(e)}")
     sys.exit(1)
 
-# --- Load Data Function ---
+# Load the dataset
 def load_data():
     try:
         dataset_path = "D:/SEM8/BigData/assi/LyricSense/MendeleyDataset/tcc_ceds_music.csv"
         if not os.path.exists(dataset_path):
-            raise FileNotFoundError(f"Dataset not found: {dataset_path}")
+            raise FileNotFoundError(f"CSV file not found at: {dataset_path}")
 
         df = spark.read.csv(f"file:///{dataset_path.replace(os.sep, '/')}", header=True, inferSchema=True)
         logger.info(f"Successfully loaded dataset with {df.count()} rows")
@@ -47,7 +47,7 @@ def load_data():
         logger.error(f"Failed to load data: {str(e)}")
         raise
 
-# --- Create ML Pipeline ---
+# Build the ML pipeline
 def create_pipeline():
     try:
         tokenizer = Tokenizer(inputCol="lyrics", outputCol="words")
@@ -64,69 +64,51 @@ def create_pipeline():
         logger.error(f"Failed to create pipeline: {str(e)}")
         raise
 
-# --- Main Execution ---
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
+# Main logic
 def main():
-    logger.info("Spark session created successfully")
-    spark = SparkSession.builder.appName("LyricsGenreClassification").getOrCreate()
-
     try:
         logger.info("Loading data...")
-        df = spark.read.csv("MendeleyDataset/tcc_ceds_music.csv", header=True, inferSchema=True)
-        logger.info(f"Successfully loaded dataset with {df.count()} rows")
+        df = load_data()
 
-        logger.info("Splitting data...")
-        train_df, test_df = df.randomSplit([0.8, 0.2], seed=42)
-        logger.info(f"Training set size: {train_df.count()}, Test set size: {test_df.count()}")
+        logger.info("Splitting data into train/test sets...")
+        train_data, test_data = df.randomSplit([0.8, 0.2], seed=42)
+        logger.info(f"Training set size: {train_data.count()}, Test set size: {test_data.count()}")
 
-        logger.info("Training model...")
-
-        tokenizer = Tokenizer(inputCol="lyrics", outputCol="tokens")
-        remover = StopWordsRemover(inputCol="tokens", outputCol="filtered")
-        hashingTF = HashingTF(inputCol="filtered", outputCol="rawFeatures", numFeatures=262144)
-        idf = IDF(inputCol="rawFeatures", outputCol="features")
-        lr = LogisticRegression(featuresCol="features", labelCol="genreIndex", maxIter=10)
-
-        pipeline = Pipeline(stages=[tokenizer, remover, hashingTF, idf, lr])
-        logger.info("Pipeline created successfully")
-
-        # Index label
-        from pyspark.ml.feature import StringIndexer
-        indexer = StringIndexer(inputCol="genre", outputCol="genreIndex")
-        indexed_train_df = indexer.fit(train_df).transform(train_df)
-        indexed_test_df = indexer.fit(test_df).transform(test_df)
-
-        model = pipeline.fit(indexed_train_df)
+        logger.info("Creating and training pipeline...")
+        pipeline = create_pipeline()
+        model = pipeline.fit(train_data)
         logger.info("Model training completed")
 
         logger.info("Evaluating model...")
-        predictions = model.transform(indexed_test_df)
-        evaluator = MulticlassClassificationEvaluator(labelCol="genreIndex", predictionCol="prediction", metricName="accuracy")
+        predictions = model.transform(test_data)
+        evaluator = MulticlassClassificationEvaluator(
+            labelCol="label", predictionCol="prediction", metricName="accuracy"
+        )
         accuracy = evaluator.evaluate(predictions)
-        logger.info(f"Test Accuracy: {accuracy:.4f}")
+        logger.info(f"Test Accuracy: {accuracy}")
 
         logger.info("Saving model...")
-        try:
-            model.save("output/lyrics_genre_model")
-            print("✅ Model saved successfully to 'output/lyrics_genre_model'")
-        except Exception as e:
-            print("❌ ERROR: Model saving failed.")
-            print("Reason:", str(e))
-            print("\n📋 You can copy the model information below for manual use:\n")
-            print("🔍 Model Summary:")
-            for idx, stage in enumerate(model.stages):
-                print(f"--- Stage {idx+1}: {stage.__class__.__name__} ---")
-                print(stage)
+        model_path = "D:/SEM8/BigData/assi/LyricSense/trained_model"
+        if os.path.exists(model_path):
+            shutil.rmtree(model_path)
+
+        model.write().overwrite().save(model_path)
+        logger.info("Model saved successfully")
+
+        logger.info("Saving genre mapping...")
+        genres = df.select("genre").distinct().collect()
+        genre_mapping = {row.genre: idx for idx, row in enumerate(genres)}
+        with open("genre_mapping.txt", "w", encoding="utf-8") as f:
+            for genre, idx in genre_mapping.items():
+                f.write(f"{genre},{idx}\n")
+        logger.info("Genre mapping saved")
 
     except Exception as e:
-        logger.error("An error occurred: %s", str(e))
-
+        logger.error(f"An error occurred: {str(e)}")
+        sys.exit(1)
     finally:
-        logger.info("Spark session stopped.")
         spark.stop()
+        logger.info("Spark session stopped")
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,149 @@
+<!-- D:\SEM8\BigData\assi\LyricSense\templates\index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>LyricSense - Genre Classifier</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f5f6fa;
+      color: #2c3e50;
+      padding: 40px;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      color: #8e44ad;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      font-size: 1.3rem;
+      color: #555;
+      margin-bottom: 20px;
+    }
+
+    textarea {
+      width: 80%;
+      max-width: 700px;
+      padding: 12px;
+      font-size: 1rem;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      resize: vertical;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    button {
+      background-color: #8e44ad;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      margin-top: 20px;
+      font-size: 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background-color: #732d91;
+    }
+
+    #predicted-genre {
+      margin-top: 30px;
+      font-size: 1.2rem;
+      color: #34495e;
+    }
+
+    .chart-container {
+      margin: 40px auto;
+      max-width: 600px;
+    }
+
+    footer {
+      margin-top: 60px;
+      font-size: 0.9rem;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <h1>LyricSense</h1>
+  <h2>Paste song lyrics and discover the genre</h2>
+
+  <textarea id="lyrics" rows="10" placeholder="Paste lyrics here..."></textarea><br>
+  <button onclick="predictGenre()">Classify</button>
+
+  <h3 id="predicted-genre"></h3>
+
+  <div class="chart-container">
+    <canvas id="genreChart"></canvas>
+  </div>
+
+  <footer>
+    &copy; 2025 LyricSense Project — Built with Flask & Chart.js
+  </footer>
+
+  <script>
+    let chartInstance = null;
+
+    function predictGenre() {
+      const lyrics = document.getElementById("lyrics").value;
+
+      fetch("/predict", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ lyrics: lyrics })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          alert(data.error);
+          return;
+        }
+
+        // Show predicted genre
+        document.getElementById("predicted-genre").innerText = "Predicted Genre: " + data.predicted_genre;
+
+        const labels = Object.keys(data.probabilities);
+        const values = Object.values(data.probabilities);
+
+        const ctx = document.getElementById("genreChart").getContext("2d");
+        if (chartInstance) chartInstance.destroy();
+
+        chartInstance = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: labels,
+            datasets: [{
+              label: "Genre Probability",
+              data: values,
+              backgroundColor: [
+                "#36A2EB","#FF6384", "#FFCE56", "#8E44AD", "#2ECC71", "#E67E22", "#1ABC9C"
+              ]
+            }]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 1
+              }
+            }
+          }
+        });
+      })
+      .catch(err => {
+        alert("Error: " + err);
+      });
+    }
+  </script>
+</body>
+</html>

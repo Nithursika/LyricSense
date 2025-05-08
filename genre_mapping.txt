@@ -1,0 +1,7 @@
+pop,0
+country,1
+blues,2
+jazz,3
+reggae,4
+rock,5
+hip hop,6
