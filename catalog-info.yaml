@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: "LyricSense"
+  description: "genre classification application"
+  annotations:
+    backstage.io/view-url: https://github.com/Nithursika/LyricSense
+    github.com/project-slug: Nithu/LyricSense
+    backstage.io/techdocs-ref: dir:.
+    pulumi.com/project-slug: nithursika/backstage/dev
+spec:
+  type: website
+  lifecycle: experimental
+  owner: "Nithursika"
